@@ -1,13 +1,13 @@
 import tensorflow as tf
 import numpy as np
 import cv2
-import cuhk03_dataset
+from .cuhk03_dataset import get_num_id,read_data
 
 FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_integer('batch_size', '150', 'batch size for training')
 tf.flags.DEFINE_integer('max_steps', '210000', 'max steps for training')
 tf.flags.DEFINE_string('logs_dir', 'logs/', 'path to logs directory')
-tf.flags.DEFINE_string('data_dir', 'data/', 'path to dataset')
+tf.flags.DEFINE_string('data_dir', './person_reid2/cuhk03_release', 'path to dataset')
 tf.flags.DEFINE_float('learning_rate', '0.01', '')
 tf.flags.DEFINE_string('mode', 'train', 'Mode train, val, test')
 tf.flags.DEFINE_string('image1', '', 'First image path to compare')
@@ -19,12 +19,12 @@ IMAGE_HEIGHT = 160
 def preprocess(images, is_train):
     def train():
         split = tf.split(images, [1, 1])
-        shape = [1 for _ in xrange(split[0].get_shape()[1])]
-        for i in xrange(len(split)):
+        shape = [1 for _ in range(split[0].get_shape()[1])]
+        for i in range(len(split)):
             split[i] = tf.reshape(split[i], [FLAGS.batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 3])
             split[i] = tf.image.resize_images(split[i], [IMAGE_HEIGHT + 8, IMAGE_WIDTH + 3])
             split[i] = tf.split(split[i], shape)
-            for j in xrange(len(split[i])):
+            for j in range(len(split[i])):
                 split[i][j] = tf.reshape(split[i][j], [IMAGE_HEIGHT + 8, IMAGE_WIDTH + 3, 3])
                 split[i][j] = tf.random_crop(split[i][j], [IMAGE_HEIGHT, IMAGE_WIDTH, 3])
                 split[i][j] = tf.image.random_flip_left_right(split[i][j])
@@ -37,12 +37,12 @@ def preprocess(images, is_train):
             tf.reshape(tf.concat(split[1], axis=0), [FLAGS.batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 3])]
     def val():
         split = tf.split(images, [1, 1])
-        shape = [1 for _ in xrange(split[0].get_shape()[1])]
-        for i in xrange(len(split)):
+        shape = [1 for _ in range(split[0].get_shape()[1])]
+        for i in range(len(split)):
             split[i] = tf.reshape(split[i], [FLAGS.batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 3])
             split[i] = tf.image.resize_images(split[i], [IMAGE_HEIGHT, IMAGE_WIDTH])
             split[i] = tf.split(split[i], shape)
-            for j in xrange(len(split[i])):
+            for j in range(len(split[i])):
                 split[i][j] = tf.reshape(split[i][j], [IMAGE_HEIGHT, IMAGE_WIDTH, 3])
                 split[i][j] = tf.image.per_image_standardization(split[i][j])
         return [tf.reshape(tf.concat(split[0], axis=0), [FLAGS.batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 3]),
@@ -76,8 +76,8 @@ def network(images1, images2, weight_decay):
         reshape = tf.reshape(trans, [1, shape[0], shape[1], shape[2], shape[3]])
         g = []
         pad = tf.pad(reshape, [[0, 0], [0, 0], [0, 0], [2, 2], [2, 2]])
-        for i in xrange(shape[2]):
-            for j in xrange(shape[3]):
+        for i in range(shape[2]):
+            for j in range(shape[3]):
                 g.append(pad[:,:,:,i:i+5,j:j+5])
 
         concat = tf.concat(g, axis=0)
@@ -124,9 +124,9 @@ def main(argv=None):
     val_num_id = 0
 
     if FLAGS.mode == 'train':
-        tarin_num_id = cuhk03_dataset.get_num_id(FLAGS.data_dir, 'train')
+        tarin_num_id = get_num_id(FLAGS.data_dir, 'train')
     elif FLAGS.mode == 'val':
-        val_num_id = cuhk03_dataset.get_num_id(FLAGS.data_dir, 'val')
+        val_num_id = get_num_id(FLAGS.data_dir, 'val')
     images1, images2 = preprocess(images, is_train)
 
     print('Build network')
@@ -149,8 +149,8 @@ def main(argv=None):
 
         if FLAGS.mode == 'train':
             step = sess.run(global_step)
-            for i in xrange(step, FLAGS.max_steps + 1):
-                batch_images, batch_labels = cuhk03_dataset.read_data(FLAGS.data_dir, 'train', tarin_num_id,
+            for i in range(step, FLAGS.max_steps + 1):
+                batch_images, batch_labels = read_data(FLAGS.data_dir, 'train', tarin_num_id,
                     IMAGE_WIDTH, IMAGE_HEIGHT, FLAGS.batch_size)
                 feed_dict = {learning_rate: lr, images: batch_images,
                     labels: batch_labels, is_train: True}
@@ -163,21 +163,21 @@ def main(argv=None):
                     saver.save(sess, FLAGS.logs_dir + 'model.ckpt', i)
         elif FLAGS.mode == 'val':
             total = 0.
-            for _ in xrange(10):
-                batch_images, batch_labels = cuhk03_dataset.read_data(FLAGS.data_dir, 'val', val_num_id,
+            for _ in range(10):
+                batch_images, batch_labels = read_data(FLAGS.data_dir, 'val', val_num_id,
                     IMAGE_WIDTH, IMAGE_HEIGHT, FLAGS.batch_size)
                 feed_dict = {images: batch_images, labels: batch_labels, is_train: False}
                 prediction = sess.run(inference, feed_dict=feed_dict)
                 prediction = np.argmax(prediction, axis=1)
                 label = np.argmax(batch_labels, axis=1)
 
-                for i in xrange(len(prediction)):
+                for i in range(len(prediction)):
                     if prediction[i] == label[i]:
                         total += 1
             print('Accuracy: %f' % (total / (FLAGS.batch_size * 10)))
 
             '''
-            for i in xrange(len(prediction)):
+            for i in range(len(prediction)):
                 print('Prediction: %s, Label: %s' % (prediction[i] == 0, labels[i] == 0))
                 image1 = cv2.cvtColor(batch_images[0][i], cv2.COLOR_RGB2BGR)
                 image2 = cv2.cvtColor(batch_images[1][i], cv2.COLOR_RGB2BGR)
@@ -201,6 +201,39 @@ def main(argv=None):
             feed_dict = {images: test_images, is_train: False}
             prediction = sess.run(inference, feed_dict=feed_dict)
             print(bool(not np.argmax(prediction[0])))
+
+
+def get_inference(images1, images2, weight_decay=0.0005):
+
+    learning_rate = tf.placeholder(tf.float32, name='learning_rate')
+    images = tf.placeholder(tf.float32, [2, FLAGS.batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 3], name='images')
+    labels = tf.placeholder(tf.float32, [FLAGS.batch_size, 2], name='labels')
+    is_train = tf.placeholder(tf.bool, name='is_train')
+    global_step = tf.Variable(0, name='global_step', trainable=False)
+    weight_decay = 0.0005
+    tarin_num_id = 0
+    val_num_id = 0
+
+    images1, images2 = preprocess(images, is_train)
+
+    logits = network(images1, images2, weight_decay)
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits))
+    inference = tf.nn.softmax(logits)
+    return inference
+
+def is_same(sess, image1, image2):
+    image1 = cv2.resize(image1, (IMAGE_WIDTH, IMAGE_HEIGHT))
+    image1 = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
+    image1 = np.reshape(image1, (1, IMAGE_HEIGHT, IMAGE_WIDTH, 3)).astype(float)
+    image2 = cv2.resize(image2, (IMAGE_WIDTH, IMAGE_HEIGHT))
+    image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2RGB)
+    image2 = np.reshape(image2, (1, IMAGE_HEIGHT, IMAGE_WIDTH, 3)).astype(float)
+    test_images = np.array([image1, image2])
+
+    feed_dict = {images: test_images, is_train: False}
+    prediction = sess.run(get_inference(image1, image2), feed_dict=feed_dict)
+    return bool(not np.argmax(prediction[0]))
+
 
 if __name__ == '__main__':
     tf.app.run()
