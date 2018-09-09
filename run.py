@@ -1,13 +1,13 @@
 import tensorflow as tf
 import numpy as np
 import cv2
-from .cuhk03_dataset import get_num_id,read_data
+from .cuhk03_dataset import get_num_id, read_data
 
 FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_integer('batch_size', '150', 'batch size for training')
 tf.flags.DEFINE_integer('max_steps', '210000', 'max steps for training')
 tf.flags.DEFINE_string('logs_dir', 'logs/', 'path to logs directory')
-tf.flags.DEFINE_string('data_dir', './person_reid2/cuhk03_release', 'path to dataset')
+tf.flags.DEFINE_string('data_dir', 'data/', 'path to dataset')
 tf.flags.DEFINE_float('learning_rate', '0.01', '')
 tf.flags.DEFINE_string('mode', 'train', 'Mode train, val, test')
 tf.flags.DEFINE_string('image1', '', 'First image path to compare')
@@ -124,9 +124,9 @@ def main(argv=None):
     val_num_id = 0
 
     if FLAGS.mode == 'train':
-        tarin_num_id = get_num_id(FLAGS.data_dir, 'train')
+        tarin_num_id = cuhk03_dataset.get_num_id(FLAGS.data_dir, 'train')
     elif FLAGS.mode == 'val':
-        val_num_id = get_num_id(FLAGS.data_dir, 'val')
+        val_num_id = cuhk03_dataset.get_num_id(FLAGS.data_dir, 'val')
     images1, images2 = preprocess(images, is_train)
 
     print('Build network')
@@ -150,7 +150,7 @@ def main(argv=None):
         if FLAGS.mode == 'train':
             step = sess.run(global_step)
             for i in range(step, FLAGS.max_steps + 1):
-                batch_images, batch_labels = read_data(FLAGS.data_dir, 'train', tarin_num_id,
+                batch_images, batch_labels = cuhk03_dataset.read_data(FLAGS.data_dir, 'train', tarin_num_id,
                     IMAGE_WIDTH, IMAGE_HEIGHT, FLAGS.batch_size)
                 feed_dict = {learning_rate: lr, images: batch_images,
                     labels: batch_labels, is_train: True}
@@ -164,7 +164,7 @@ def main(argv=None):
         elif FLAGS.mode == 'val':
             total = 0.
             for _ in range(10):
-                batch_images, batch_labels = read_data(FLAGS.data_dir, 'val', val_num_id,
+                batch_images, batch_labels = cuhk03_dataset.read_data(FLAGS.data_dir, 'val', val_num_id,
                     IMAGE_WIDTH, IMAGE_HEIGHT, FLAGS.batch_size)
                 feed_dict = {images: batch_images, labels: batch_labels, is_train: False}
                 prediction = sess.run(inference, feed_dict=feed_dict)
@@ -203,35 +203,46 @@ def main(argv=None):
             print(bool(not np.argmax(prediction[0])))
 
 
-def get_inference(images1, images2, weight_decay=0.0005):
 
-    learning_rate = tf.placeholder(tf.float32, name='learning_rate')
-    images = tf.placeholder(tf.float32, [2, FLAGS.batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 3], name='images')
-    labels = tf.placeholder(tf.float32, [FLAGS.batch_size, 2], name='labels')
-    is_train = tf.placeholder(tf.bool, name='is_train')
-    global_step = tf.Variable(0, name='global_step', trainable=False)
-    weight_decay = 0.0005
-    tarin_num_id = 0
-    val_num_id = 0
+inf = None
+def get_inference(images, is_train, labels, weight_decay=0.0005):
+    global inf
+    if inf is not None:
+        return inf
 
     images1, images2 = preprocess(images, is_train)
 
     logits = network(images1, images2, weight_decay)
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits))
     inference = tf.nn.softmax(logits)
+    inf = inference
     return inference
 
 def is_same(sess, image1, image2):
+
+    FLAGS.batch_size = 1
+
+    learning_rate = tf.placeholder(tf.float32, name='learning_rate')
+    images = tf.placeholder(tf.float32, [2, FLAGS.batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 3], name='images')
+    labels = tf.placeholder(tf.float32, [FLAGS.batch_size, 2], name='labels')
+    is_train = tf.placeholder(tf.bool, name='is_train')
+    global_step = tf.Variable(0, name='global_step', trainable=False)
+    tarin_num_id=0
+    val_num_id=0
+
     image1 = cv2.resize(image1, (IMAGE_WIDTH, IMAGE_HEIGHT))
     image1 = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
     image1 = np.reshape(image1, (1, IMAGE_HEIGHT, IMAGE_WIDTH, 3)).astype(float)
+
     image2 = cv2.resize(image2, (IMAGE_WIDTH, IMAGE_HEIGHT))
     image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2RGB)
     image2 = np.reshape(image2, (1, IMAGE_HEIGHT, IMAGE_WIDTH, 3)).astype(float)
+
     test_images = np.array([image1, image2])
 
+    inference = get_inference(images, is_train, labels)
     feed_dict = {images: test_images, is_train: False}
-    prediction = sess.run(get_inference(image1, image2), feed_dict=feed_dict)
+    prediction = sess.run(inference, feed_dict=feed_dict)
     return bool(not np.argmax(prediction[0]))
 
 
