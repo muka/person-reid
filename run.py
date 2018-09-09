@@ -205,7 +205,7 @@ def main(argv=None):
 
 
 inf = None
-def get_inference(images, is_train, labels, weight_decay=0.0005):
+def get_inference(images, is_train, labels, learning_rate, global_step, weight_decay=0.0005):
     global inf
     if inf is not None:
         return inf
@@ -215,16 +215,24 @@ def get_inference(images, is_train, labels, weight_decay=0.0005):
     logits = network(images1, images2, weight_decay)
     loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=labels, logits=logits))
     inference = tf.nn.softmax(logits)
+
+    optimizer = tf.train.MomentumOptimizer(learning_rate, momentum=0.9)
+    train = optimizer.minimize(loss, global_step=global_step)
+
     inf = inference
     return inference
 
 def is_same(sess, image1, image2):
 
-    FLAGS.batch_size = 1
+    if inf is None:
+        sess.run(tf.global_variables_initializer())
+
+    batch_size = 1
+
 
     learning_rate = tf.placeholder(tf.float32, name='learning_rate')
-    images = tf.placeholder(tf.float32, [2, FLAGS.batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 3], name='images')
-    labels = tf.placeholder(tf.float32, [FLAGS.batch_size, 2], name='labels')
+    images = tf.placeholder(tf.float32, [2, batch_size, IMAGE_HEIGHT, IMAGE_WIDTH, 3], name='images')
+    labels = tf.placeholder(tf.float32, [batch_size, 2], name='labels')
     is_train = tf.placeholder(tf.bool, name='is_train')
     global_step = tf.Variable(0, name='global_step', trainable=False)
     tarin_num_id=0
@@ -240,7 +248,8 @@ def is_same(sess, image1, image2):
 
     test_images = np.array([image1, image2])
 
-    inference = get_inference(images, is_train, labels)
+    inference = get_inference(images, is_train, labels, learning_rate, global_step)
+
     feed_dict = {images: test_images, is_train: False}
     prediction = sess.run(inference, feed_dict=feed_dict)
     return bool(not np.argmax(prediction[0]))
